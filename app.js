@@ -421,6 +421,11 @@ async function generateCatImageBlob(stationName, prefecture) {
 
   const captionSize = Math.round(width * 0.032);
   const prefectureSize = Math.round(width * 0.023);
+  const centerX = width / 2;
+  const captionY = height * 0.055;
+  const lineGap = height * 0.045;
+  const captionBadgeH = captionSize + captionSize * 0.3;
+  const prefectureY = captionY + captionBadgeH / 2 + lineGap + prefectureSize / 2;
 
   drawTextBadge(
     exportCtx,
@@ -429,16 +434,16 @@ async function generateCatImageBlob(stationName, prefecture) {
       { text: stationName, fill: '#ffe566' },
       { text: '站', fill: '#ffffff' },
     ],
-    width / 2,
-    height * 0.055,
+    centerX,
+    captionY,
     captionSize,
   );
 
   drawTextBadge(
     exportCtx,
     [{ text: prefecture, fill: '#b8e0ff' }],
-    width / 2,
-    height * 0.20,
+    centerX,
+    prefectureY,
     prefectureSize,
   );
 
