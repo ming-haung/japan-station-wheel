@@ -485,7 +485,20 @@ body {
   display: inline-block;
   font-family: 'Noto Sans JP', sans-serif;
   color: #ffe566;
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+  cursor: pointer;
   animation: stationNamePop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) 0.25s both;
+}
+
+.cat-caption-station:hover {
+  color: #fff3a0;
+}
+
+.cat-caption-station:focus-visible {
+  outline: 2px solid #ffe566;
+  outline-offset: 2px;
 }
 
 .cat-prefecture {
@@ -513,18 +526,45 @@ body {
   animation: stationNamePop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) 0.45s both;
 }
 
+.cat-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  justify-content: center;
+}
+
+.cat-action-btn,
 .cat-close-btn {
-  padding: 0.65rem 2rem;
+  padding: 0.65rem 1.4rem;
   border: none;
   border-radius: 50px;
-  background: linear-gradient(135deg, var(--accent), #c1121f);
-  color: white;
   font-family: inherit;
-  font-size: 0.95rem;
+  font-size: 0.9rem;
   font-weight: 700;
   cursor: pointer;
+  transition: transform 0.2s, opacity 0.2s;
+}
+
+.cat-action-btn {
+  background: rgba(255, 255, 255, 0.12);
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.cat-action-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.cat-action-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.cat-close-btn {
+  background: linear-gradient(135deg, var(--accent), #c1121f);
+  color: white;
   box-shadow: 0 4px 20px var(--accent-glow);
-  transition: transform 0.2s;
 }
 
 .cat-close-btn:hover {

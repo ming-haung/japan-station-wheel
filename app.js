@@ -13,7 +13,11 @@ const state = {
   pool: [],
   isSpinning: false,
   currentRotation: 0,
+  lastCatResult: null,
 };
+
+const CAT_IMAGE_SRC = '貓.png';
+let catImage = null;
 
 const canvas = document.getElementById('wheelCanvas');
 const ctx = canvas.getContext('2d');
@@ -26,7 +30,10 @@ const selectAllBtn = document.getElementById('selectAllBtn');
 const clearAllBtn = document.getElementById('clearAllBtn');
 const catOverlay = document.getElementById('catOverlay');
 const catStationName = document.getElementById('catStationName');
+const catStationLink = document.getElementById('catStationLink');
 const catStationPrefecture = document.getElementById('catStationPrefecture');
+const catDownloadBtn = document.getElementById('catDownloadBtn');
+const catShareBtn = document.getElementById('catShareBtn');
 const catCloseBtn = document.getElementById('catCloseBtn');
 
 function init() {
@@ -35,6 +42,7 @@ function init() {
   updatePool();
   drawWheel();
   bindEvents();
+  preloadCatImage();
 }
 
 function renderCategoryTabs() {
@@ -66,6 +74,12 @@ function renderLineList() {
 
 function stationKey(station) {
   return `${station.name}|${station.prefecture}`;
+}
+
+function getGoogleMapsUrl(stationName, prefecture) {
+  const label = stationName.endsWith('駅') ? stationName : `${stationName}駅`;
+  const query = `${label} ${prefecture}`;
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
 }
 
 function updatePool() {
@@ -267,19 +281,198 @@ function showResult(station) {
   showCatReveal(station.name, station.prefecture);
 }
 
-function showCatReveal(stationName, prefecture) {
+function preloadCatImage() {
+  return new Promise((resolve, reject) => {
+    if (catImage) {
+      resolve(catImage);
+      return;
+    }
+    const img = new Image();
+    img.onload = () => {
+      catImage = img;
+      resolve(img);
+    };
+    img.onerror = reject;
+    img.src = CAT_IMAGE_SRC;
+  });
+}
+
+function drawOutlinedText(ctx, text, x, y, { font, fill, stroke, lineWidth }) {
+  ctx.font = font;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.lineJoin = 'round';
+  ctx.lineWidth = lineWidth;
+  ctx.strokeStyle = stroke;
+  ctx.fillStyle = fill;
+  ctx.strokeText(text, x, y);
+  ctx.fillText(text, x, y);
+}
+
+function drawTextBadge(ctx, parts, centerX, centerY, fontSize) {
+  const font = `900 ${fontSize}px "Noto Sans JP", "Noto Sans TC", sans-serif`;
+  const gap = fontSize * 0.15;
+  ctx.font = font;
+
+  const widths = parts.map((part) => ctx.measureText(part.text).width);
+  const totalW = widths.reduce((sum, w) => sum + w, 0) + gap * (parts.length - 1);
+  const padX = fontSize * 0.4;
+  const padY = fontSize * 0.15;
+  const boxW = totalW + padX * 2;
+  const boxH = fontSize + padY * 2;
+  const boxX = centerX - boxW / 2;
+  const boxY = centerY - boxH / 2;
+
+  ctx.fillStyle = 'rgba(12, 6, 30, 0.92)';
+  ctx.beginPath();
+  ctx.roundRect(boxX, boxY, boxW, boxH, fontSize * 0.15);
+  ctx.fill();
+
+  let cursorX = centerX - totalW / 2;
+  parts.forEach((part, index) => {
+    const textWidth = widths[index];
+    const textX = cursorX + textWidth / 2;
+    drawOutlinedText(ctx, part.text, textX, centerY, {
+      font,
+      fill: part.fill,
+      stroke: '#000',
+      lineWidth: fontSize * 0.06,
+    });
+    cursorX += textWidth + gap;
+  });
+}
+
+async function generateCatImageBlob(stationName, prefecture) {
+  await preloadCatImage();
+  await document.fonts.ready;
+
+  const width = catImage.naturalWidth;
+  const height = catImage.naturalHeight;
+  const exportCanvas = document.createElement('canvas');
+  exportCanvas.width = width;
+  exportCanvas.height = height;
+  const exportCtx = exportCanvas.getContext('2d');
+
+  exportCtx.drawImage(catImage, 0, 0, width, height);
+
+  const captionSize = Math.round(width * 0.032);
+  const prefectureSize = Math.round(width * 0.023);
+
+  drawTextBadge(
+    exportCtx,
+    [
+      { text: 'ㄇㄧㄠˊ？前往', fill: '#ffffff' },
+      { text: stationName, fill: '#ffe566' },
+      { text: '站', fill: '#ffffff' },
+    ],
+    width / 2,
+    height * 0.055,
+    captionSize,
+  );
+
+  drawTextBadge(
+    exportCtx,
+    [{ text: prefecture, fill: '#b8e0ff' }],
+    width / 2,
+    height * 0.20,
+    prefectureSize,
+  );
+
+  return new Promise((resolve, reject) => {
+    exportCanvas.toBlob((blob) => {
+      if (blob) resolve(blob);
+      else reject(new Error('無法產生圖片'));
+    }, 'image/png');
+  });
+}
+
+function setCatActionButtonsLoading(isLoading) {
+  catDownloadBtn.disabled = isLoading || !state.lastCatResult;
+  catShareBtn.disabled = isLoading || !state.lastCatResult;
+  catDownloadBtn.textContent = isLoading ? '產生中...' : '下載圖片';
+  if (!isLoading) catShareBtn.textContent = '分享';
+}
+
+function downloadCatImage() {
+  const result = state.lastCatResult;
+  if (!result?.blob) return;
+
+  const url = URL.createObjectURL(result.blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `貓咪前往${result.name}站.png`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+async function shareCatImage() {
+  const result = state.lastCatResult;
+  if (!result?.blob) return;
+
+  const fileName = `貓咪前往${result.name}站.png`;
+  const file = new File([result.blob], fileName, { type: 'image/png' });
+  const shareText = `ㄇㄧㄠˊ？前往 ${result.name} 站（${result.prefecture}）`;
+
+  try {
+    if (navigator.share && navigator.canShare?.({ files: [file] })) {
+      await navigator.share({
+        title: '日本車站轉盤',
+        text: shareText,
+        files: [file],
+      });
+      return;
+    }
+
+    if (navigator.share) {
+      await navigator.share({
+        title: '日本車站轉盤',
+        text: `${shareText}\n${window.location.href}`,
+      });
+      return;
+    }
+
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(`${shareText}\n${window.location.href}`);
+      catShareBtn.textContent = '已複製！';
+      setTimeout(() => {
+        catShareBtn.textContent = '分享';
+      }, 2000);
+      return;
+    }
+
+    downloadCatImage();
+  } catch (error) {
+    if (error.name === 'AbortError') return;
+    downloadCatImage();
+  }
+}
+
+async function showCatReveal(stationName, prefecture) {
   catStationName.textContent = stationName;
+  catStationLink.href = getGoogleMapsUrl(stationName, prefecture);
   catStationPrefecture.textContent = prefecture;
   catOverlay.classList.remove('closing');
   catOverlay.hidden = false;
   document.body.style.overflow = 'hidden';
+  state.lastCatResult = null;
+  setCatActionButtonsLoading(true);
 
-  // 重播站名與縣市彈出動畫
-  [catStationName, catStationPrefecture].forEach((el) => {
+  [catStationLink, catStationPrefecture].forEach((el) => {
     el.style.animation = 'none';
     el.offsetHeight;
     el.style.animation = '';
   });
+
+  try {
+    const blob = await generateCatImageBlob(stationName, prefecture);
+    state.lastCatResult = { blob, name: stationName, prefecture };
+    setCatActionButtonsLoading(false);
+  } catch (error) {
+    console.error(error);
+    setCatActionButtonsLoading(false);
+    catDownloadBtn.textContent = '產生失敗';
+    catShareBtn.textContent = '產生失敗';
+  }
 }
 
 function hideCatReveal() {
@@ -336,6 +529,8 @@ function bindEvents() {
 
   spinBtn.addEventListener('click', spin);
 
+  catDownloadBtn.addEventListener('click', downloadCatImage);
+  catShareBtn.addEventListener('click', shareCatImage);
   catCloseBtn.addEventListener('click', hideCatReveal);
   catOverlay.querySelector('.cat-overlay-backdrop').addEventListener('click', hideCatReveal);
 }
