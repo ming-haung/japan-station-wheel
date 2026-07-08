@@ -24,6 +24,9 @@ const lineList = document.getElementById('lineList');
 const stationCount = document.getElementById('stationCount');
 const selectAllBtn = document.getElementById('selectAllBtn');
 const clearAllBtn = document.getElementById('clearAllBtn');
+const catOverlay = document.getElementById('catOverlay');
+const catStationName = document.getElementById('catStationName');
+const catCloseBtn = document.getElementById('catCloseBtn');
 
 function init() {
   renderCategoryTabs();
@@ -60,24 +63,44 @@ function renderLineList() {
   }).join('');
 }
 
+function stationKey(station) {
+  return `${station.name}|${station.prefecture}`;
+}
+
 function updatePool() {
-  state.pool = [];
+  const uniqueStations = new Map();
+
   for (const lineId of state.selectedLines) {
     const [catKey, lineKey] = lineId.split(':');
     const cat = CATEGORIES[catKey];
     const line = cat.lines[lineKey];
+    const lineInfo = {
+      lineName: line.name,
+      lineNameEn: line.nameEn,
+      lineColor: line.color,
+      categoryLabel: cat.label,
+      lineId,
+    };
+
     for (const station of line.stations) {
-      state.pool.push({
-        ...station,
-        lineName: line.name,
-        lineNameEn: line.nameEn,
-        lineColor: line.color,
-        categoryLabel: cat.label,
-        lineId,
-      });
+      const key = stationKey(station);
+      const existing = uniqueStations.get(key);
+
+      if (existing) {
+        existing.lines.push(lineInfo);
+      } else {
+        uniqueStations.set(key, {
+          name: station.name,
+          romaji: station.romaji,
+          prefecture: station.prefecture,
+          lines: [lineInfo],
+        });
+      }
     }
   }
-  stationCount.textContent = `已選 ${state.pool.length} 個車站`;
+
+  state.pool = Array.from(uniqueStations.values());
+  stationCount.textContent = `已選 ${state.pool.length} 個車站（去重）`;
   spinBtn.disabled = state.pool.length === 0 || state.isSpinning;
   drawWheel();
 }
@@ -221,18 +244,47 @@ function spin() {
 }
 
 function showResult(station) {
+  const line = station.lines[Math.floor(Math.random() * station.lines.length)];
+  const extraLines = station.lines.length > 1
+    ? `<div class="result-prefecture">亦經 ${station.lines.length} 條路線</div>`
+    : '';
+
   resultCard.classList.add('winner');
   resultCard.innerHTML = `
     <div>
       <div class="result-station">${station.name}</div>
       <div class="result-romaji">${station.romaji}</div>
       <div class="result-line">
-        <span class="result-line-dot" style="background:${station.lineColor}"></span>
-        ${station.lineName}
+        <span class="result-line-dot" style="background:${line.lineColor}"></span>
+        ${line.lineName}
       </div>
       <div class="result-prefecture">${station.prefecture}</div>
+      ${extraLines}
     </div>
   `;
+
+  showCatReveal(station.name);
+}
+
+function showCatReveal(stationName) {
+  catStationName.textContent = stationName;
+  catOverlay.classList.remove('closing');
+  catOverlay.hidden = false;
+  document.body.style.overflow = 'hidden';
+
+  // 重播站名彈出動畫
+  catStationName.style.animation = 'none';
+  catStationName.offsetHeight;
+  catStationName.style.animation = '';
+}
+
+function hideCatReveal() {
+  catOverlay.classList.add('closing');
+  setTimeout(() => {
+    catOverlay.hidden = true;
+    catOverlay.classList.remove('closing');
+    document.body.style.overflow = '';
+  }, 250);
 }
 
 function bindEvents() {
@@ -279,6 +331,9 @@ function bindEvents() {
   });
 
   spinBtn.addEventListener('click', spin);
+
+  catCloseBtn.addEventListener('click', hideCatReveal);
+  catOverlay.querySelector('.cat-overlay-backdrop').addEventListener('click', hideCatReveal);
 }
 
 init();
