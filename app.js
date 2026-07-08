@@ -26,6 +26,7 @@ const selectAllBtn = document.getElementById('selectAllBtn');
 const clearAllBtn = document.getElementById('clearAllBtn');
 const catOverlay = document.getElementById('catOverlay');
 const catStationName = document.getElementById('catStationName');
+const catStationPrefecture = document.getElementById('catStationPrefecture');
 const catCloseBtn = document.getElementById('catCloseBtn');
 
 function init() {
@@ -263,19 +264,22 @@ function showResult(station) {
     </div>
   `;
 
-  showCatReveal(station.name);
+  showCatReveal(station.name, station.prefecture);
 }
 
-function showCatReveal(stationName) {
+function showCatReveal(stationName, prefecture) {
   catStationName.textContent = stationName;
+  catStationPrefecture.textContent = prefecture;
   catOverlay.classList.remove('closing');
   catOverlay.hidden = false;
   document.body.style.overflow = 'hidden';
 
-  // 重播站名彈出動畫
-  catStationName.style.animation = 'none';
-  catStationName.offsetHeight;
-  catStationName.style.animation = '';
+  // 重播站名與縣市彈出動畫
+  [catStationName, catStationPrefecture].forEach((el) => {
+    el.style.animation = 'none';
+    el.offsetHeight;
+    el.style.animation = '';
+  });
 }
 
 function hideCatReveal() {
