@@ -16,8 +16,9 @@ const state = {
   lastCatResult: null,
 };
 
-const CAT_IMAGE_SRC = '貓.png';
+const CAT_IMAGE_SRC = new URL('./cat.png', import.meta.url).href;
 let catImage = null;
+let catImageLoadPromise = null;
 
 const canvas = document.getElementById('wheelCanvas');
 const ctx = canvas.getContext('2d');
@@ -282,18 +283,81 @@ function showResult(station) {
 }
 
 function preloadCatImage() {
+  if (catImage) return Promise.resolve(catImage);
+  if (catImageLoadPromise) return catImageLoadPromise;
+
+  catImageLoadPromise = (async () => {
+    const response = await fetch(CAT_IMAGE_SRC);
+    if (!response.ok) throw new Error('無法載入貓咪圖片');
+    const blob = await response.blob();
+    const blobUrl = URL.createObjectURL(blob);
+
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        catImage = img;
+        URL.revokeObjectURL(blobUrl);
+        resolve(img);
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(blobUrl);
+        reject(new Error('無法載入貓咪圖片'));
+      };
+      img.src = blobUrl;
+    });
+  })().catch((error) => {
+    catImageLoadPromise = null;
+    throw error;
+  });
+
+  return catImageLoadPromise;
+}
+
+function fillRoundRect(ctx, x, y, width, height, radius) {
+  ctx.beginPath();
+  if (typeof ctx.roundRect === 'function') {
+    ctx.roundRect(x, y, width, height, radius);
+  } else {
+    ctx.moveTo(x + radius, y);
+    ctx.lineTo(x + width - radius, y);
+    ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+    ctx.lineTo(x + width, y + height - radius);
+    ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+    ctx.lineTo(x + radius, y + height);
+    ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+    ctx.lineTo(x, y + radius);
+    ctx.quadraticCurveTo(x, y, x + radius, y);
+    ctx.closePath();
+  }
+  ctx.fill();
+}
+
+function canvasToBlob(exportCanvas) {
   return new Promise((resolve, reject) => {
-    if (catImage) {
-      resolve(catImage);
+    if (exportCanvas.toBlob) {
+      exportCanvas.toBlob((blob) => {
+        if (blob) {
+          resolve(blob);
+          return;
+        }
+        fallbackToDataUrl();
+      }, 'image/png');
       return;
     }
-    const img = new Image();
-    img.onload = () => {
-      catImage = img;
-      resolve(img);
-    };
-    img.onerror = reject;
-    img.src = CAT_IMAGE_SRC;
+
+    fallbackToDataUrl();
+
+    function fallbackToDataUrl() {
+      try {
+        const dataUrl = exportCanvas.toDataURL('image/png');
+        fetch(dataUrl)
+          .then((res) => res.blob())
+          .then(resolve)
+          .catch(reject);
+      } catch (error) {
+        reject(error);
+      }
+    }
   });
 }
 
@@ -324,9 +388,7 @@ function drawTextBadge(ctx, parts, centerX, centerY, fontSize) {
   const boxY = centerY - boxH / 2;
 
   ctx.fillStyle = 'rgba(12, 6, 30, 0.92)';
-  ctx.beginPath();
-  ctx.roundRect(boxX, boxY, boxW, boxH, fontSize * 0.15);
-  ctx.fill();
+  fillRoundRect(ctx, boxX, boxY, boxW, boxH, fontSize * 0.15);
 
   let cursorX = centerX - totalW / 2;
   parts.forEach((part, index) => {
@@ -343,17 +405,19 @@ function drawTextBadge(ctx, parts, centerX, centerY, fontSize) {
 }
 
 async function generateCatImageBlob(stationName, prefecture) {
-  await preloadCatImage();
+  const image = await preloadCatImage();
   await document.fonts.ready;
 
-  const width = catImage.naturalWidth;
-  const height = catImage.naturalHeight;
+  const width = image.naturalWidth;
+  const height = image.naturalHeight;
+  if (!width || !height) throw new Error('貓咪圖片尺寸無效');
+
   const exportCanvas = document.createElement('canvas');
   exportCanvas.width = width;
   exportCanvas.height = height;
   const exportCtx = exportCanvas.getContext('2d');
 
-  exportCtx.drawImage(catImage, 0, 0, width, height);
+  exportCtx.drawImage(image, 0, 0, width, height);
 
   const captionSize = Math.round(width * 0.032);
   const prefectureSize = Math.round(width * 0.023);
@@ -378,12 +442,7 @@ async function generateCatImageBlob(stationName, prefecture) {
     prefectureSize,
   );
 
-  return new Promise((resolve, reject) => {
-    exportCanvas.toBlob((blob) => {
-      if (blob) resolve(blob);
-      else reject(new Error('無法產生圖片'));
-    }, 'image/png');
-  });
+  return canvasToBlob(exportCanvas);
 }
 
 function setCatActionButtonsLoading(isLoading) {
@@ -397,12 +456,35 @@ function downloadCatImage() {
   const result = state.lastCatResult;
   if (!result?.blob) return;
 
+  const fileName = `貓咪前往${result.name}站.png`;
   const url = URL.createObjectURL(result.blob);
   const link = document.createElement('a');
   link.href = url;
-  link.download = `貓咪前往${result.name}站.png`;
+  link.download = fileName;
+  link.style.display = 'none';
+  document.body.appendChild(link);
   link.click();
-  URL.revokeObjectURL(url);
+  document.body.removeChild(link);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+async function downloadCatImageWithFallback() {
+  const result = state.lastCatResult;
+  if (!result?.blob) return;
+
+  const fileName = `貓咪前往${result.name}站.png`;
+  const file = new File([result.blob], fileName, { type: 'image/png' });
+
+  if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent) && navigator.share && navigator.canShare?.({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file], title: '日本車站轉盤' });
+      return;
+    } catch (error) {
+      if (error.name === 'AbortError') return;
+    }
+  }
+
+  downloadCatImage();
 }
 
 async function shareCatImage() {
@@ -529,7 +611,7 @@ function bindEvents() {
 
   spinBtn.addEventListener('click', spin);
 
-  catDownloadBtn.addEventListener('click', downloadCatImage);
+  catDownloadBtn.addEventListener('click', downloadCatImageWithFallback);
   catShareBtn.addEventListener('click', shareCatImage);
   catCloseBtn.addEventListener('click', hideCatReveal);
   catOverlay.querySelector('.cat-overlay-backdrop').addEventListener('click', hideCatReveal);
